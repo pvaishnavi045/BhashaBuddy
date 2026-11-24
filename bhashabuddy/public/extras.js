@@ -1,0 +1,18 @@
+// EXTRAS – picture dictionary, buddy chat, peer recording (local demo)
+function renderPictures(){pictureGrid.innerHTML=vocabulary.map(x=>`<div class="picture-item"><div class="emoji">${x.emoji}</div><h3>${esc(x.word)}</h3><p>${esc(translation(x))}</p><button data-on="speakText('${x.word.replace(/'/g,"\\'")}')">🔊 Listen</button></div>`).join('')}
+
+function sendChat(){const input=chatInput.value.trim();if(!input)return;addChat(input,'user');chatInput.value='';const q=input.toLowerCase();const match=vocabulary.find(x=>q.includes(x.word.toLowerCase()));let answer;if(match)answer=`${match.word}: ${match.definition} ${translation(match)} Example: ${match.example}`;else if(/\b(hello|hi|hey)\b/.test(q))answer='Hello! 👋 Choose a technical word and I will explain it in simple English and your selected language.';else answer='I can explain these 50 engineering words. Try asking about Algorithm, Programming, Database, HTML, CSS, Network or Variable.';addChat(answer,'bot')}
+
+function addChat(text,cls){const p=document.createElement('p');p.className=cls;p.textContent=text;chatLog.appendChild(p);chatLog.scrollTop=chatLog.scrollHeight}
+
+async function recordPeer(){if(mediaRecorder&&mediaRecorder.state==='recording'){mediaRecorder.stop();recordBtn.textContent='🔴 Start Recording';return}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){recordStatus.textContent='Audio recording is not supported in this browser.';return}try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});recordedChunks=[];mediaRecorder=new MediaRecorder(stream);mediaRecorder.ondataavailable=e=>{if(e.data.size)recordedChunks.push(e.data)};mediaRecorder.onstop=()=>{recording=new Blob(recordedChunks,{type:mediaRecorder.mimeType||'audio/webm'});playBtn.disabled=false;recordStatus.textContent='Recording ready. Use Play Recording to listen.';stream.getTracks().forEach(track=>track.stop())};mediaRecorder.start();recordBtn.textContent='■ Stop Recording';recordStatus.textContent='Recording… speak now.'}catch(e){recordStatus.textContent='Microphone permission was not granted or recording is unavailable.'}}
+
+function playPeer(){if(recording){const url=URL.createObjectURL(recording),audio=new Audio(url);audio.play();audio.onended=()=>URL.revokeObjectURL(url)}}const voted=new Set();function upvotePeer(){const w=vocabulary[practiceIndex].word;if(voted.has(w))return;voted.add(w);votes++;voteCount.textContent=votes}
+
+async function sharePeer(){const msg='Server unavailable – sharing needs the BhashaBuddy server.';if(!recording){recordStatus.textContent='Record first.';return}try{const r=await fetch('/api/recordings?word='+encodeURIComponent(vocabulary[practiceIndex].word),{method:'POST',headers:{'Content-Type':(recording.type||'audio/webm').split(';')[0]},body:recording});recordStatus.textContent=r.ok?'Shared anonymously ✓':msg;if(r.ok)renderPeerList()}catch(err){recordStatus.textContent=msg}}
+
+async function renderPeerList(){const list=await API.call('/recordings?word='+encodeURIComponent(vocabulary[practiceIndex].word));peerList.textContent='';if(!list||!list.length){peerList.textContent=list?'No classmate recordings yet.':'Connect to the server to hear classmates.';return}list.forEach((r,i)=>{const row=document.createElement('p');row.textContent='Classmate #'+(i+1)+' · 👍 '+r.votes+' ';[['▶','playRemote('+r.id+')'],['👍','voteRemote('+r.id+')']].forEach(([t,a])=>{const b=document.createElement('button');b.textContent=t;b.dataset.on=a;row.appendChild(b)});peerList.appendChild(row)})}
+
+function playRemote(id){new Audio('/api/recordings/'+id+'/audio').play().catch(()=>{})}
+
+async function voteRemote(id){await API.call('/recordings/'+id+'/vote','POST',{});renderPeerList()}
